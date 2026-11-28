@@ -22545,7 +22545,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
-.dd-badge-minha-geral {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-minha-geral {{ background:#06bc48; color:#fff; border:0; }}
 .dd-badge-conc-geral  {{ background:#0183c3; color:#fff; border:0; }}
 .dd-arrow-geral {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow-geral.open {{ transform:rotate(180deg); }}
@@ -26298,7 +26298,7 @@ body {{ padding-bottom:8px; }}
 .card-name {{ font-size:16px;font-weight:700;color:#fff; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
 .badge {{
     display:inline-block; padding:2px 10px; border:0; border-radius:999px;
-    font-size:11px; line-height:14px; font-weight:700; color:#fff; background:#0183c3;
+    font-size:11px; line-height:14px; font-weight:700; color:#0e2a47; background:#a8cfe7;
     white-space:nowrap; flex-shrink:0;
 }}
 .badge.minha {{ color:#0e2a47; background:#fff; }}
@@ -26423,7 +26423,7 @@ function buildCards() {{
         var btnIA = document.createElement('button');
         btnIA.className = 'btn-analisar';
         btnIA.id = 'btn_analisar_' + c.idx;
-        btnIA.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '✨ Analisar este site com IA';
+        btnIA.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Z"/><path d="m19 15 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z"/></svg><span>Analisar este site com IA</span>';
         btnIA.onclick = (function(idx, btnEl) {{
             return function() {{
                 btnEl.disabled = true;
@@ -29186,8 +29186,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
             _ads_id_h    = emp.get("ads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_id","")
             _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
-            _badge_bg_h  = "#fff"        if _is_minha_h else "#0183c3"
-            _badge_col_h = "#0e2a47"        if _is_minha_h else "#fff"
+            _badge_bg_h  = "#06bc48"        if _is_minha_h else "#0183c3"
+            _badge_col_h = "#fff"
             _badge_brd_h = "transparent"        if _is_minha_h else "transparent"
             _page_pic_h  = emp.get("ads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_page_pic","")
             _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
@@ -29335,7 +29335,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
 .dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
-.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-minha {{ background:#06bc48; color:#fff; border:0; }}
 .dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
@@ -36332,8 +36332,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
             _gads_id_h    = emp.get("gads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_id","")
             _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
-            _badge_bg_h  = "#fff"        if _is_minha_h else "#0183c3"
-            _badge_col_h = "#0e2a47"        if _is_minha_h else "#fff"
+            _badge_bg_h  = "#06bc48"        if _is_minha_h else "#0183c3"
+            _badge_col_h = "#fff"
             _badge_brd_h = "transparent"        if _is_minha_h else "transparent"
             _page_pic_h  = emp.get("gads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_page_pic","")
             _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
@@ -36497,7 +36497,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
 .dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
-.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-minha {{ background:#06bc48; color:#fff; border:0; }}
 .dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
@@ -43039,7 +43039,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
-.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-minha {{ background:#06bc48; color:#fff; border:0; }}
 .dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
 #dd-trigger-badge {{ flex-shrink:0; display:inline-flex !important; }}
 .dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
@@ -44896,7 +44896,7 @@ body{{padding-bottom:8px;}}
 }}
 .ver-copy-btn:hover {{ color:#065f9e; }}
 .no-caption {{ font-size:12px; color:#d1d5db; font-style:italic; }}
-.card-footer-btns {{ display:grid; grid-template-columns:1fr 1fr; border-top:1px solid #f3f4f6; margin-top:auto; }}
+.card-footer-btns {{ display:grid; grid-template-columns:1fr; border-top:1px solid #f3f4f6; margin-top:auto; }}
 .footer-btn {{
     padding:10px 6px; display:flex; align-items:center; justify-content:center; gap:6px;
     font-size:12px; font-weight:700; border:none; background:#eff6ff;
@@ -44904,7 +44904,6 @@ body{{padding-bottom:8px;}}
     text-decoration:none; color:#275f8d;
 }}
 .footer-btn:hover {{ background:#13649a; color:#ffffff !important; }}
-.footer-btn.ig {{ border-right:1px solid #ffffff; }}
 .post-ia-panel {{
     border-top:1px solid #bbf7d0; background:#f0fdf4;
     padding:12px 14px; font-size:12px; color:#374151; line-height:1.7;
@@ -45292,7 +45291,6 @@ function buildGrid(posts) {{
         else {{ badgeIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="white"/><polyline points="21 15 16 10 5 21"/></svg>'; }}
         var thumbUrl     = (p.thumb  || '').trim();
         var engTotal     = (p.likes||0) + (p.comments||0);
-        var igUrl        = p.ig_url || '#';
         var iconFallback = mediaType === 2 ? '🎬' : (mediaType === 8 ? '🖼️' : '📷');
         var nSlides = (p.carousel_imgs_hd && p.carousel_imgs_hd.length) || (p.carousel_imgs && p.carousel_imgs.length) || 0;
         var dotsHtml = '';
@@ -45342,11 +45340,10 @@ function buildGrid(posts) {{
             + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_ENGAJAMENTO}</span><span class="metric-cell-val eng">' + fmtNum(engTotal) + '</span></div>'
             + '</div>'
             + '<div class="card-caption-wrap">'
-            + (hasCaption ? '<div class="card-caption" id="cap_' + idx + '">' + p.caption + '</div><button class="ver-copy-btn" id="vcb_' + idx + '" onclick="toggleCopy(' + idx + ')">ver mais</button>' : '<span class="no-caption">Sem legenda</span>')
+            + (hasCaption ? '<div class="card-caption" id="cap_' + idx + '">' + p.caption + '</div><button class="ver-copy-btn" id="vcb_' + idx + '" onclick="toggleCopy(' + idx + ')">[ver mais]</button>' : '<span class="no-caption">Sem legenda</span>')
             + '</div>'
             + (p.resultado_ia ? '<div class="post-ia-panel"><div class="post-ia-hdr">✨ Análise de IA</div>' + p.resultado_ia + '</div>' : '')
             + '<div class="card-footer-btns">'
-            + (igUrl && igUrl !== '#' ? '<a class="footer-btn ig" href="' + igUrl + '" target="_blank">Ver no Instagram</a>' : '<span class="footer-btn ig" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>')
             + '<button class="footer-btn ia" id="ia_btn_' + idx + '" onclick="analisarPost(' + idx + ')">' + (p.tem_ia ? 'Reanalisar' : 'Analisar postagem') + '</button>'
             + '</div>';
         if (thumbUrl) {{
@@ -45371,7 +45368,7 @@ function toggleCopy(idx) {{
     if (!capEl || !btn) return;
     var expanded = capEl.classList.contains('expanded');
     capEl.classList.toggle('expanded', !expanded);
-    btn.textContent = expanded ? 'ver mais' : 'ver menos';
+    btn.textContent = expanded ? '[ver mais]' : '[ver menos]';
     setTimeout(syncHeight, 60);
 }}
 

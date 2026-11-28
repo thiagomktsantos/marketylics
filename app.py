@@ -22186,14 +22186,22 @@ function setHeightGeral(isOpen) {{
                     return _html
 
                 if _is_concorrente_score:
-                    score_checklist_html = (
-                        '<div class="profile-score-competitor-group">'
-                        + _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
-                        + '</div><div class="profile-score-competitor-group">'
-                        + _grupo_criterios_html("", _criterios_nok, _icon_nok, "#b45309", False)
-                        + '</div>'
-                    )
+                    _concorrente_cor_unica = not _criterios_ok or not _criterios_nok
+                    if _concorrente_cor_unica:
+                        score_checklist_html = (
+                            _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
+                            + _grupo_criterios_html("", _criterios_nok, _icon_nok, "#b45309", False)
+                        )
+                    else:
+                        score_checklist_html = (
+                            '<div class="profile-score-competitor-group">'
+                            + _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
+                            + '</div><div class="profile-score-competitor-group">'
+                            + _grupo_criterios_html("", _criterios_nok, _icon_nok, "#b45309", False)
+                            + '</div>'
+                        )
                 else:
+                    _concorrente_cor_unica = False
                     score_checklist_html = (
                         _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
                         + _grupo_criterios_html("", _criterios_nok, _icon_nok, "#b45309", False)
@@ -22222,7 +22230,11 @@ function setHeightGeral(isOpen) {{
                     _score_titulo = "Score de Perfil"
 
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
-                _perfil_checklist_classe = "profile-score-competitor-groups" if _is_concorrente_score else "profile-score-checklist two-cols"
+                _perfil_checklist_classe = (
+                    "profile-score-checklist two-cols"
+                    if (not _is_concorrente_score or _concorrente_cor_unica)
+                    else "profile-score-competitor-groups"
+                )
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
@@ -23798,16 +23810,19 @@ function buildSeoColumn(d,colEl) {{
         }});
         return html;
     }}
+    var competitorSingleColor=isCompetitor&&(!itensOk.length||!itensNok.length);
     var checklistHtml=isCompetitor
-        ? '<div class="profile-score-competitor-group">'
-          +grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
-          +'</div><div class="profile-score-competitor-group">'
-          +grupoSeoHtml('',itensNok,iconNok,'#b45309',false)
-          +'</div>'
+        ? (competitorSingleColor
+          ? grupoSeoHtml('',itensOk,iconOk,'#15803d',false)+grupoSeoHtml('',itensNok,iconNok,'#b45309',false)
+          : '<div class="profile-score-competitor-group">'
+            +grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
+            +'</div><div class="profile-score-competitor-group">'
+            +grupoSeoHtml('',itensNok,iconNok,'#b45309',false)
+            +'</div>')
         : grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
           +grupoSeoHtml('',itensNok,iconNok,'#b45309',false);
     var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
-    var seoChecklistClass=isCompetitor?'profile-score-competitor-groups':'profile-score-checklist two-cols';
+    var seoChecklistClass=(!isCompetitor||competitorSingleColor)?'profile-score-checklist two-cols':'profile-score-competitor-groups';
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
     scoreBlock.innerHTML=

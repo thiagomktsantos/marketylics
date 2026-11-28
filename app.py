@@ -12344,6 +12344,127 @@ else:
     gemini_model = None
 
 
+def editar_servicos_empresa(servicos):
+    servicos = [item.strip() for valor in servicos for item in re.split(r"[,;]", valor) if item.strip()]
+    if not hasattr(st.components, "v2"):
+        texto = st.text_input(
+            "Serviços", value=", ".join(servicos), key="edit_empresa_servicos_texto",
+            help="Separe os serviços por vírgula ou ponto e vírgula.",
+        )
+        return [item.strip() for item in re.split(r"[,;]", texto) if item.strip()]
+
+    editor = st.components.v2.component(
+        "empresa_servicos",
+        html="""
+            <label for="servico">Serviços</label>
+            <div class="campo">
+                <div class="badges" aria-label="Serviços adicionados"></div>
+                <input id="servico" placeholder="Ex: Venda de ingressos" aria-describedby="servico-ajuda">
+            </div>
+            <small id="servico-ajuda">Use vírgula, ponto e vírgula ou Enter para adicionar.</small>
+        """,
+        css="""
+            :host { font-family: inherit; color: #1a2e4a; }
+            label { display: block; font-size: 16px; margin-bottom: 8px; }
+            .campo {
+                display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+                min-height: 52px; padding: 7px 10px; box-sizing: border-box;
+                border: 2px solid #e3e6eb; border-radius: 8px; background: #f0f2f5;
+            }
+            .campo:focus-within { border-color: #1683d7; }
+            .badges { display: contents; }
+            input { flex: 1 1 180px; min-width: 0; border: 0; outline: 0;
+                padding: 5px 0; background: transparent; color: inherit; font: inherit; }
+            .badge {
+                display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+                padding: 3px 4px 3px 10px; border-radius: 999px;
+                background: #e0effb; color: #174a70; font-size: 14px; overflow-wrap: anywhere;
+            }
+            button { flex: none; font: inherit; color: inherit; border: 0;
+                border-radius: 50%; background: transparent; cursor: pointer;
+                height: 24px; width: 24px; }
+            button:hover, button:focus-visible { background: #c9e3f7; }
+            small { display: block; margin-top: 5px; color: #64748b; font-size: 13px; }
+        """,
+        js=r"""
+            export default function ({ parentElement, data, setStateValue }) {
+                const input = parentElement.querySelector("input");
+                const badges = parentElement.querySelector(".badges");
+                const editor = input.serviceEditor ?? {
+                    items: [...data.items],
+                    lastSent: JSON.stringify([data.items, data.pending]),
+                };
+                if (!input.serviceEditor) input.value = data.pending;
+                input.serviceEditor = editor;
+
+                function publish() {
+                    const pending = input.value.trim();
+                    const snapshot = JSON.stringify([editor.items, pending]);
+                    if (snapshot === editor.lastSent) return;
+                    editor.lastSent = snapshot;
+                    setStateValue("services", { items: [...editor.items], pending });
+                }
+
+                function renderBadges() {
+                    badges.replaceChildren();
+                    editor.items.forEach((service, index) => {
+                        const badge = document.createElement("span");
+                        badge.className = "badge";
+                        const label = document.createElement("span");
+                        label.textContent = service;
+                        const remove = document.createElement("button");
+                        remove.type = "button";
+                        remove.textContent = "×";
+                        remove.setAttribute("aria-label", "Remover " + service);
+                        remove.onclick = () => {
+                            editor.items.splice(index, 1);
+                            renderBadges();
+                            input.focus();
+                            publish();
+                        };
+                        badge.append(label, remove);
+                        badges.append(badge);
+                    });
+                }
+
+                function addCompleted(parts) {
+                    editor.items.push(...parts.map(part => part.trim()).filter(Boolean));
+                    renderBadges();
+                }
+
+                function handleInput() {
+                    const parts = input.value.split(/[,;]/);
+                    if (parts.length > 1) {
+                        input.value = parts.pop();
+                        addCompleted(parts);
+                    }
+                    publish();
+                }
+
+                input.oninput = event => { if (!event.isComposing) handleInput(); };
+                input.oncompositionend = handleInput;
+                input.onkeydown = event => {
+                    if (event.key !== "Enter" || event.isComposing) return;
+                    event.preventDefault();
+                    addCompleted(input.value.split(/[,;]/));
+                    input.value = "";
+                    publish();
+                };
+                renderBadges();
+            }
+        """,
+    )
+    inicial = {"items": servicos, "pending": ""}
+    chave = "edit_empresa_servicos_badges"
+    anterior = getattr(st.session_state.get(chave), "services", None) or inicial
+    resultado = editor(
+        key=chave, data=anterior, default={"services": inicial},
+        on_services_change=lambda: None,
+    )
+    dados = resultado.services or inicial
+    return [*dados["items"], dados["pending"]] if dados["pending"] else dados["items"]
+
+
 ESTADOS_CIDADES = {
     "Acre": ["Rio Branco", "Cruzeiro do Sul"],
     "Alagoas": ["Maceió", "Arapiraca"],
@@ -13395,7 +13516,6 @@ section.main .block-container {
 
 /* Mantem os cabecalhos das paginas na mesma linha superior de Redes Sociais.
    O recuo compensa os elementos tecnicos ocultos criados antes do titulo. */
-.st-key-page_header_empresa_editor,
 .st-key-page_header_cad,
 .st-key-page_header_geral,
 .st-key-page_header_sites,
@@ -13419,7 +13539,6 @@ section.main .block-container {
 }
 
 @media (max-width: 768px) {
-    .st-key-page_header_empresa_editor,
     .st-key-page_header_cad,
     .st-key-page_header_geral,
     .st-key-page_header_sites,
@@ -19635,10 +19754,7 @@ if st.session_state.pagina == "home":
     .st-key-card_redes [data-testid="column"],
     .st-key-card_redes [data-testid="column"] > div,
     .st-key-card_redes .stElementContainer,
-    .st-key-card_redes .stElementContainer > div,
-    .st-key-card_redes div[data-testid="stForm"],
-    .st-key-card_redes div[data-testid="stForm"] > div,
-    .st-key-card_redes div[data-testid="stForm"] > div > div {
+    .st-key-card_redes .stElementContainer > div {
         background: #ffffff !important;
         background-color: #ffffff !important;
     }
@@ -19697,11 +19813,6 @@ if st.session_state.pagina == "home":
         caret-color: transparent !important;
         cursor: pointer !important;
     }
-    .st-key-card_redes div[data-testid="stForm"] {
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
     .st-key-btn_home_editar_ghost,
     .stElementContainer:has(.st-key-btn_home_editar_ghost) {
         position: fixed !important;
@@ -19720,8 +19831,7 @@ if st.session_state.pagina == "home":
 
     if st.session_state.editar_empresa or not tem_dados:
 
-        page_header = st.container(key="page_header_empresa_editor")
-        h1, h2 = page_header.columns([6.5, 3.5])
+        h1, h2 = st.columns([6.5, 3.5])
         with h1:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19766,35 +19876,37 @@ html, body { background: transparent; overflow: hidden; }
                 unsafe_allow_html=True,
             )
 
+        rascunho = emp.copy()
+
         with st.container(key="card_identificacao"):
             sec_label("Identificação")
             c1, c2 = st.columns(2)
-            emp["nome"] = c1.text_input(
+            rascunho["nome"] = c1.text_input(
                 "Nome da Empresa",
-                value=emp.get("nome", ""),
+                value=rascunho.get("nome", ""),
                 key="edit_nome",
                 placeholder="Ex: Marketylics",
             )
             site_digitado = c2.text_input(
                 "Site",
-                value=emp.get("site", ""),
+                value=rascunho.get("site", ""),
                 key="edit_site",
                 placeholder="Ex: marketylics.com",
             )
-            emp["site"] = limpar_site(site_digitado)
+            rascunho["site"] = limpar_site(site_digitado)
 
         with st.container(key="card_setor"):
             sec_label("Setor")
             c3, c4 = st.columns(2)
             setor_opcoes = list(SUBNICHOS.keys())
-            setor_atual  = emp.get("setor", "Marketing")
+            setor_atual  = rascunho.get("setor", "Marketing")
             setor_idx    = setor_opcoes.index(setor_atual) if setor_atual in setor_opcoes else 0
 
             def on_setor_change():
-                emp["tipo"] = ""
+                rascunho["tipo"] = ""
                 st.session_state["_tipo_reset"] = True
 
-            emp["setor"] = c3.selectbox(
+            rascunho["setor"] = c3.selectbox(
                 "Setor",
                 setor_opcoes,
                 index=setor_idx,
@@ -19802,14 +19914,14 @@ html, body { background: transparent; overflow: hidden; }
                 on_change=on_setor_change,
             )
 
-            subnichos_disponiveis = SUBNICHOS.get(emp["setor"], [])
-            tipo_atual = emp.get("tipo", "")
+            subnichos_disponiveis = SUBNICHOS.get(rascunho["setor"], [])
+            tipo_atual = rascunho.get("tipo", "")
             tipo_idx   = 0 if st.session_state.get("_tipo_reset") else (
                 subnichos_disponiveis.index(tipo_atual) if tipo_atual in subnichos_disponiveis else 0
             )
             st.session_state["_tipo_reset"] = False
 
-            emp["tipo"] = c4.selectbox(
+            rascunho["tipo"] = c4.selectbox(
                 "Sub-nicho",
                 subnichos_disponiveis,
                 index=tipo_idx,
@@ -19817,67 +19929,83 @@ html, body { background: transparent; overflow: hidden; }
             )
 
         with st.container(key="card_redes"):
-            with st.form("cad_empresa", clear_on_submit=False):
+            sec_label("Redes Sociais")
+            c5, c6 = st.columns(2)
+            rascunho["instagram"] = c5.text_input(
+                "Instagram",
+                value=rascunho.get("instagram", "@"),
+                key="edit_empresa_instagram",
+                placeholder="@suaempresa",
+            )
+            rascunho["fb_page"] = c6.text_input(
+                "Facebook",
+                value=rascunho.get("fb_page", ""),
+                key="edit_empresa_facebook",
+                placeholder="facebook.com/suaempresa",
+            )
 
-                sec_label("Redes Sociais")
-                c5, c6 = st.columns(2)
-                emp["instagram"] = c5.text_input(
-                    "Instagram",
-                    value=emp.get("instagram", "@"),
-                    placeholder="@suaempresa",
-                )
-                emp["fb_page"] = c6.text_input(
-                    "Facebook",
-                    value=emp.get("fb_page", ""),
-                    placeholder="facebook.com/suaempresa",
-                )
+            rascunho["servicos"] = editar_servicos_empresa(rascunho.get("servicos", []))
 
-                servicos_text = st.text_input(
-                    "Serviços (separados por vírgula)",
-                    value=", ".join(emp.get("servicos", [])),
-                    placeholder="Ex: SEO, Tráfego Pago, Social Media",
-                )
-                emp["servicos"] = [s.strip() for s in servicos_text.split(",") if s.strip()]
+            form_divider()
 
-                form_divider()
+            sec_label("Localização")
+            loc1, loc2 = st.columns(2)
+            estado_salvo = rascunho.get("estado")
+            cidade_salva = rascunho.get("cidade")
+            estados = list(ESTADOS_CIDADES)
+            if "edit_empresa_estado" not in st.session_state:
+                st.session_state.edit_empresa_estado = estado_salvo if estado_salvo in estados else None
 
-                sec_label("Localização")
-                loc1, loc2 = st.columns(2)
-                estados      = list(ESTADOS_CIDADES.keys())
-                estado_atual = emp.get("estado", "")
-                estado_index = estados.index(estado_atual) if estado_atual in estados else 0
-                emp["estado"] = loc1.selectbox("Estado", estados, index=estado_index)
+            def limpar_cidade_empresa():
+                st.session_state.edit_empresa_cidade = None
 
-                cidades      = ESTADOS_CIDADES.get(emp["estado"], [])
-                cidade_atual = emp.get("cidade", "")
-                cidade_index = cidades.index(cidade_atual) if cidade_atual in cidades else 0
-                emp["cidade"] = loc2.selectbox("Cidade", cidades, index=cidade_index)
+            estado = loc1.selectbox(
+                "Estado", estados, index=None, key="edit_empresa_estado",
+                placeholder="Selecione o estado", on_change=limpar_cidade_empresa,
+            )
+            cidades = ESTADOS_CIDADES.get(estado, [])
+            if "edit_empresa_cidade" not in st.session_state:
+                st.session_state.edit_empresa_cidade = cidade_salva if cidade_salva in cidades else None
 
-                form_divider()
+            cidade = loc2.selectbox(
+                "Cidade", cidades, index=None, key="edit_empresa_cidade",
+                placeholder="Selecione a cidade" if estado else "Selecione o estado primeiro",
+                disabled=not estado,
+            )
 
-                col_salvar, col_cancelar = st.columns(2)
-                salvar   = col_salvar.form_submit_button("Salvar",   width="stretch", type="primary", key="btn_salvar_empresa")
-                cancelar = col_cancelar.form_submit_button("Cancelar", width="stretch", key="btn_cancelar_empresa")
+            if cidade_salva and cidade_salva not in ESTADOS_CIDADES.get(estado_salvo, []) and not cidade:
+                st.warning(f'Revise a localização salva ({cidade_salva} / {estado_salvo or "sem estado"}).')
 
-                if cancelar:
-                    if tem_dados:
-                        st.session_state.editar_empresa = False
-                        st.rerun()
-                    else:
-                        st.warning("Preencha pelo menos o nome da empresa para continuar.")
+            form_divider()
 
-                if salvar:
-                    emp["nome"] = st.session_state.get("edit_nome", emp.get("nome", ""))
-                    emp["site"] = limpar_site(st.session_state.get("edit_site", emp.get("site", "")))
-                    if emp["nome"].strip():
-                        st.session_state.editar_empresa = False
-                        if emp.get("site"):
-                            extrair_e_salvar_seo(emp["site"], emp["nome"])
-                        salvar_empresa_e_concorrentes()
-                        st.success("Empresa salva com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("Informe pelo menos o nome da empresa.")
+            col_salvar, col_cancelar = st.columns(2)
+            salvar   = col_salvar.button("Salvar",   width="stretch", type="primary", key="btn_salvar_empresa")
+            cancelar = col_cancelar.button("Cancelar", width="stretch", key="btn_cancelar_empresa")
+
+            if cancelar:
+                if tem_dados:
+                    st.session_state.editar_empresa = False
+                    st.rerun()
+                else:
+                    st.warning("Preencha pelo menos o nome da empresa para continuar.")
+
+            if salvar:
+                rascunho["nome"] = st.session_state.get("edit_nome", rascunho.get("nome", ""))
+                rascunho["site"] = limpar_site(st.session_state.get("edit_site", rascunho.get("site", "")))
+                if estado and cidade not in cidades:
+                    st.error("Selecione uma cidade do estado escolhido.")
+                elif rascunho["nome"].strip():
+                    rascunho["estado"] = estado or ""
+                    rascunho["cidade"] = cidade or ""
+                    emp.update(rascunho)
+                    st.session_state.editar_empresa = False
+                    if rascunho.get("site"):
+                        extrair_e_salvar_seo(rascunho["site"], rascunho["nome"])
+                    salvar_empresa_e_concorrentes()
+                    st.success("Empresa salva com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Informe pelo menos o nome da empresa.")
 
     else:
 
@@ -28490,6 +28618,10 @@ function triggerTab(label) {{
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
+
+        if onboarding_buscando and st.session_state.gads_onboarding_job_id:
+            _time.sleep(2.5)
+            st.rerun()
 
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
@@ -42353,7 +42485,7 @@ function setHeight(isOpen) {{
     def _build_bio_link_box(urls_str: str) -> str:
         urls = [u.strip() for u in urls_str.split("|") if u.strip()]
         if not urls:
-            return '<div style="font-size:13px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
+            return '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
 
         icon_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 
@@ -42364,7 +42496,7 @@ function setHeight(isOpen) {{
             rows.append(
                 f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
                 f'{icon_svg}'
-                f'<a href="{u}" target="_blank" style="font-size:12px;font-weight:600;'
+                f'<a href="{u}" target="_blank" style="font-size:13px;font-weight:600;'
                 f'color:#3a9fd6;text-decoration:none;word-break:break-all;">{display}</a>'
                 f'</div>'
             )
@@ -43651,9 +43783,9 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna esquerda: bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
-            <div style="font-size:11px;font-weight:700;color:#6b7280;
+            <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
-            {('<div style="font-size:14px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:13px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
+            {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
         </div>
 
         <!-- Divisor vertical -->
@@ -43661,7 +43793,7 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna direita: Link da Bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
-            <div style="font-size:11px;font-weight:700;color:#6b7280;
+            <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">LINK DA BIO</div>
             <div style="display:flex;flex-direction:column;gap:0;">
                 {_build_bio_link_box(ext_url)}

@@ -13700,6 +13700,59 @@ def limpar_site(url):
     url = url.rstrip("/")
     return url
 
+_SITE_FAVICON_JS = r"""
+function loadSiteFavicon(avatar, site) {
+    if (!site) return;
+    var siteUrl;
+    try {
+        siteUrl = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(site) ? site : 'https://' + site);
+    } catch (err) {
+        return;
+    }
+    if (siteUrl.protocol !== 'https:' && siteUrl.protocol !== 'http:') return;
+    siteUrl.protocol = 'https:';
+
+    var fallbackUrl = new URL('https://www.google.com/s2/favicons');
+    fallbackUrl.searchParams.set('domain', siteUrl.hostname);
+    fallbackUrl.searchParams.set('sz', '64');
+
+    function loadFallback() {
+        var fallback = new Image();
+        fallback.alt = '';
+        fallback.referrerPolicy = 'no-referrer';
+        fallback.onload = function() { avatar.replaceChildren(fallback); };
+        fallback.src = fallbackUrl.href;
+    }
+
+    var favicon = new Image();
+    favicon.crossOrigin = 'anonymous';
+    favicon.referrerPolicy = 'no-referrer';
+    favicon.onerror = loadFallback;
+    favicon.onload = function() {
+        try {
+            var canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 64;
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, 64, 64);
+            var scale = 64 / Math.max(favicon.naturalWidth, favicon.naturalHeight);
+            var width = favicon.naturalWidth * scale;
+            var height = favicon.naturalHeight * scale;
+            ctx.drawImage(favicon, (64 - width) / 2, (64 - height) / 2, width, height);
+            var jpeg = new Image();
+            jpeg.alt = '';
+            jpeg.onload = function() { avatar.replaceChildren(jpeg); };
+            jpeg.onerror = loadFallback;
+            jpeg.src = canvas.toDataURL('image/jpeg', 0.95);
+        } catch (err) {
+            loadFallback();
+        }
+    };
+    favicon.src = new URL('/favicon.ico', siteUrl.origin).href;
+}
+""".strip()
+
+
 def gerar_avatar(nome):
     nome = nome.strip().upper()
     if not nome:
@@ -21678,7 +21731,6 @@ function triggerAdicionar() {
                 "url":       c.get("url", ""),
                 "instagram": c.get("instagram", ""),
                 "fb_page":   c.get("fb_page", ""),
-                "cor":       get_concorrente_color(i),
                 "avatar":    gerar_avatar(c.get("nome", "?")),
             })
         cards_json = _json_conc.dumps(cards_conc, ensure_ascii=True)
@@ -21729,15 +21781,17 @@ body {{ padding-bottom: 8px; }}
 .card-header {{
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 16px 20px 14px;
+    gap: 7px;
+    padding: 16px 18px 14px;
+    background: #586e8a;
 }}
 .avatar {{
-    width: 44px; height: 44px; border-radius: 50%;
+    width: 40px; height: 40px; border: 0; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; font-weight: 700; color: #374151; background: #f3f4f6; flex-shrink: 0;
+    font-size: 14px; font-weight: 700; color: #374151; background: #fff; flex-shrink: 0;
 }}
-.name {{ font-size: 16px; font-weight: 700; color: #111827; }}
+.avatar img {{ width: 24px; height: 24px; object-fit: contain; }}
+.name {{ font-size: 16px; font-weight: 700; color: #fff; overflow-wrap: anywhere; }}
 .divider {{ height: 1px; background: #f3f4f6; margin: 0 20px; }}
 .card-body {{
     padding: 14px 20px 18px;
@@ -21832,6 +21886,8 @@ body {{ padding-bottom: 8px; }}
         }}
     }}
  
+    {_SITE_FAVICON_JS}
+
     function buildCards() {{
         var grid = document.getElementById('grid');
         if (!grid) return;
@@ -21843,11 +21899,12 @@ body {{ padding-bottom: 8px; }}
             var hdr = document.createElement('div');
             hdr.className = 'card-header';
             hdr.innerHTML =
-                '<div class="avatar" style="border:2px solid ' + c.cor + '">' + c.avatar + '</div>'
+                '<div class="avatar">' + c.avatar + '</div>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div class="name">' + c.nome + '</div>'
                 + '</div>';
             card.appendChild(hdr);
+            loadSiteFavicon(hdr.querySelector('.avatar'), (c.url || '').trim());
  
             var dvd = document.createElement('div');
             dvd.className = 'divider';
@@ -26191,7 +26248,6 @@ function triggerTab(label) {{
                 "idx":            idx_s,
                 "nome":           s["nome"],
                 "url":            s["url"],
-                "tipo":           s["tipo"],
                 "badge_lbl":      badge_lbl,
                 "avatar":         avatar_letras,
                 "tem_analise":    tem_analise,
@@ -26235,16 +26291,15 @@ body {{ padding-bottom:8px; }}
 .avatar {{
     width:40px;height:40px;border:0;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    font-size:14px;font-weight:700;color:#374151;background:#f3f4f6;flex-shrink:0;
+    font-size:14px;font-weight:700;color:#374151;background:#fff;flex-shrink:0;
 }}
 .avatar img {{ width:24px; height:24px; object-fit:contain; }}
 .card-name {{ font-size:16px;font-weight:700;color:#fff; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
 .badge {{
-    display:inline-block; padding:2px 10px; border:1px solid #93c5fd; border-radius:999px;
-    font-size:11px; font-weight:700; color:#1d4ed8; background:#ffffff;
+    display:inline-block; padding:2px 10px; border:1px solid #86efac; border-radius:999px;
+    font-size:11px; font-weight:700; color:#15803d; background:#ffffff;
     white-space:nowrap; flex-shrink:0;
 }}
-.badge.minha {{ color:#15803d; border-color:#86efac; }}
 .url-row {{
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
@@ -26312,55 +26367,7 @@ function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
-function loadSiteFavicon(avatar, site) {{
-    if (!site) return;
-    var siteUrl;
-    try {{
-        siteUrl = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(site) ? site : 'https://' + site);
-    }} catch (err) {{
-        return;
-    }}
-    if (siteUrl.protocol !== 'https:' && siteUrl.protocol !== 'http:') return;
-    siteUrl.protocol = 'https:';
-
-    var fallbackUrl = new URL('https://www.google.com/s2/favicons');
-    fallbackUrl.searchParams.set('domain', siteUrl.hostname);
-    fallbackUrl.searchParams.set('sz', '64');
-
-    function loadFallback() {{
-        var fallback = new Image();
-        fallback.alt = '';
-        fallback.referrerPolicy = 'no-referrer';
-        fallback.onload = function() {{ avatar.replaceChildren(fallback); }};
-        fallback.src = fallbackUrl.href;
-    }}
-
-    var favicon = new Image();
-    favicon.crossOrigin = 'anonymous';
-    favicon.referrerPolicy = 'no-referrer';
-    favicon.onerror = loadFallback;
-    favicon.onload = function() {{
-        try {{
-            var canvas = document.createElement('canvas');
-            canvas.width = canvas.height = 64;
-            var ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#f3f4f6';
-            ctx.fillRect(0, 0, 64, 64);
-            var scale = 64 / Math.max(favicon.naturalWidth, favicon.naturalHeight);
-            var width = favicon.naturalWidth * scale;
-            var height = favicon.naturalHeight * scale;
-            ctx.drawImage(favicon, (64 - width) / 2, (64 - height) / 2, width, height);
-            var jpeg = new Image();
-            jpeg.alt = '';
-            jpeg.onload = function() {{ avatar.replaceChildren(jpeg); }};
-            jpeg.onerror = loadFallback;
-            jpeg.src = canvas.toDataURL('image/jpeg', 0.95);
-        }} catch (err) {{
-            loadFallback();
-        }}
-    }};
-    favicon.src = new URL('/favicon.ico', siteUrl.origin).href;
-}}
+{_SITE_FAVICON_JS}
 
 function buildCards() {{
     var grid = document.getElementById('cards-grid');
@@ -26377,7 +26384,7 @@ function buildCards() {{
             + '<div style="flex:1;min-width:0;overflow:hidden;">'
             +   '<div class="card-name">' + esc(c.nome) + '</div>'
             + '</div>'
-            + '<span class="badge' + (c.tipo === 'minha' ? ' minha' : '') + '">' + c.badge_lbl + '</span>';
+            + '<span class="badge">' + c.badge_lbl + '</span>';
         card.appendChild(hdr);
 
         loadSiteFavicon(hdr.querySelector('.avatar'), (c.url || '').trim());

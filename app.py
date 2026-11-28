@@ -21678,7 +21678,6 @@ function triggerAdicionar() {
                 "url":       c.get("url", ""),
                 "instagram": c.get("instagram", ""),
                 "fb_page":   c.get("fb_page", ""),
-                "cor":       get_concorrente_color(i),
                 "avatar":    gerar_avatar(c.get("nome", "?")),
             })
         cards_json = _json_conc.dumps(cards_conc, ensure_ascii=True)
@@ -21706,7 +21705,7 @@ html, body {{
 body {{ padding-bottom: 8px; }}
  
 .outer-wrap {{
-    background: #d2dde9;
+    background: #f3f4f6;
     border-radius: 16px;
     padding: 20px;
     min-height: 60px;
@@ -21718,15 +21717,13 @@ body {{ padding-bottom: 8px; }}
 }}
 .card {{
     background: #fff;
-    border: 1px solid #dde1e7;
+    border: 1px solid #e5e7eb;
     border-radius: 14px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     box-shadow: 0 4px 20px rgba(0,0,0,0.10);
-    transition: border-color 0.15s;
 }}
-.card:hover {{ border-color: #6fd1f3; }}
  
 .card-header {{
     display: flex;
@@ -21737,14 +21734,9 @@ body {{ padding-bottom: 8px; }}
 .avatar {{
     width: 44px; height: 44px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; font-weight: 700; color: #fff; flex-shrink: 0;
+    font-size: 16px; font-weight: 700; color: #374151; background: #f3f4f6; flex-shrink: 0;
 }}
 .name {{ font-size: 16px; font-weight: 700; color: #111827; }}
-.badge {{
-    display: inline-block; padding: 2px 10px; border-radius: 20px;
-    font-size: 11px; font-weight: 700;
-    background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
-}}
 .divider {{ height: 1px; background: #f3f4f6; margin: 0 20px; }}
 .card-body {{
     padding: 14px 20px 18px;
@@ -21786,24 +21778,15 @@ body {{ padding-bottom: 8px; }}
     var CARDS = JSON.parse(document.getElementById('cards-data').textContent);
  
     var ICON_GLOBE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
-    var ICON_FB    = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>';
+    var ICON_FB    = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#6b7280"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>';
     var ICON_EDIT  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
     var ICON_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
  
-    function igIcon(idx) {{
-        return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none">'
-            + '<defs><linearGradient id="ig' + idx + '" x1="0%" y1="100%" x2="100%" y2="0%">'
-            + '<stop offset="0%" stop-color="#f09433"/><stop offset="25%" stop-color="#e6683c"/>'
-            + '<stop offset="50%" stop-color="#dc2743"/><stop offset="75%" stop-color="#cc2366"/>'
-            + '<stop offset="100%" stop-color="#bc1888"/></linearGradient></defs>'
-            + '<rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig' + idx + ')"/>'
-            + '<circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8" fill="none"/>'
-            + '<circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>';
-    }}
- 
-    function makeRow(iconHtml, iconBg, label, value) {{
+    var ICON_IG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1" fill="#6b7280" stroke="none"/></svg>';
+
+    function makeRow(iconHtml, label, value) {{
         return '<div class="row">'
-            + '<div class="icon-wrap" style="background:' + iconBg + '">' + iconHtml + '</div>'
+            + '<div class="icon-wrap">' + iconHtml + '</div>'
             + '<div style="flex:1;min-width:0">'
             + '<span class="row-label">' + label + '</span>'
             + '<span class="row-value">' + (value || '—') + '</span>'
@@ -21844,12 +21827,11 @@ body {{ padding-bottom: 8px; }}
         CARDS.forEach(function(c) {{
             var card = document.createElement('div');
             card.className = 'card';
-            card.style.borderTop = '3px solid ' + c.cor;
  
             var hdr = document.createElement('div');
             hdr.className = 'card-header';
             hdr.innerHTML =
-                '<div class="avatar" style="background:' + c.cor + '">' + c.avatar + '</div>'
+                '<div class="avatar">' + c.avatar + '</div>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div class="name">' + c.nome + '</div>'
                 + '</div>';
@@ -21863,9 +21845,9 @@ body {{ padding-bottom: 8px; }}
             body.className = 'card-body';
             body.innerHTML =
                 '<div class="sec-title">Presença Digital</div>'
-                + makeRow(ICON_GLOBE, '#f3f4f6',  'Site',      c.url)
-                + makeRow(igIcon(c.idx), '#fff0f6', 'Instagram', c.instagram)
-                + makeRow(ICON_FB,    '#e8f0fe',  'Facebook',  c.fb_page);
+                + makeRow(ICON_GLOBE, 'Site', c.url)
+                + makeRow(ICON_IG, 'Instagram', c.instagram)
+                + makeRow(ICON_FB, 'Facebook', c.fb_page);
             card.appendChild(body);
  
             var footer = document.createElement('div');

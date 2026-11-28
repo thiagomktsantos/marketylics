@@ -22340,10 +22340,10 @@ function setHeightGeral(isOpen) {{
                     )
 
                 formato_donuts = (
-                    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;align-items:start;">'
-                    + make_donut_svg(round(a["video"]     / total_ads * 100), "#8b5cf6", "Vídeo",     a["video"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), "#8b5cf6", "Imagem",    a["imagem"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), "#8b5cf6", "Carrossel", a["carrossel"], size=42, stroke=4, font_size=10)
+                    '<div style="display:flex;align-items:center;">'
+                    + make_donut_svg(round(a["video"]     / total_ads * 100), "#8b5cf6", "Vídeo",     a["video"])
+                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), "#8b5cf6", "Imagem",    a["imagem"])
+                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), "#8b5cf6", "Carrossel", a["carrossel"])
                     + '</div>'
                 )
                 ads_formato_block = (
@@ -22489,10 +22489,10 @@ function setHeightGeral(isOpen) {{
                 _g_total = _g["total"] or 1
                 _g_score = calcular_score_google_ads(_g)
                 _g_formatos = (
-                    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;align-items:start;">'
-                    + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(_g["grafico"] / _g_total * 100), "#4285f4", "Gráfico", _g["grafico"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(_g["texto"] / _g_total * 100), "#4285f4", "Texto", _g["texto"], size=42, stroke=4, font_size=10)
+                    '<div style="display:flex;align-items:center;">'
+                    + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"])
+                    + make_donut_svg(round(_g["grafico"] / _g_total * 100), "#4285f4", "Gráfico", _g["grafico"])
+                    + make_donut_svg(round(_g["texto"] / _g_total * 100), "#4285f4", "Texto", _g["texto"])
                     + '</div>'
                 )
                 _g_sinais = [
@@ -22620,7 +22620,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Formatos</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Formato dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;">Total: {_g["total"]}</div>'
                     '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + _g_formatos + '</div>'

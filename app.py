@@ -22036,13 +22036,13 @@ function setHeightGeral(isOpen) {{
 
                 def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
                     return (
-                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0;">'
-                        f'<div style="width:44px;height:44px;border-radius:50%;background:{icon_color};'
+                        f'<div class="metric-main">'
+                        f'<div style="width:42px;height:42px;border-radius:50%;background:{icon_color};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
-                        f'<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
+                        f'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
                         f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
                         f'</div>'
-                        f'<div style="font-size:18px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
+                        f'<div style="font-size:18px;font-weight:800;color:{valor_color};line-height:1.05;">{valor}</div>'
                         f'<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
                         f'letter-spacing:0.5px;white-space:nowrap;">{label}</div>'
                         f'</div>'
@@ -22078,6 +22078,7 @@ function setHeightGeral(isOpen) {{
                     if pct == 0:
                         cor = "#6b7280"
                         cor_bg = "#6b7280"
+                        cor_fundo = "#f3f4f6"
                         _texto = "Na média"
                         _icone_svg = (
                             '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
@@ -22087,6 +22088,7 @@ function setHeightGeral(isOpen) {{
                     else:
                         cor = "#15803d" if acima else "#b45309"
                         cor_bg = "#22c55e" if acima else "#f59e0b"
+                        cor_fundo = "#f0fdf4" if acima else "#fff7ed"
                         if acima:
                             _icone_svg = (
                                 '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
@@ -22112,13 +22114,11 @@ function setHeightGeral(isOpen) {{
                     )
 
                     return (
-                        '<div style="margin-top:8px;">'
-                        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0;"/>'
-                        '<div style="display:flex;justify-content:center;width:100%;box-sizing:border-box;">'
-                        f'<div style="display:flex;align-items:center;gap:5px;width:78px;">'
+                        f'<div class="metric-context" style="background:{cor_fundo};">'
+                        f'<div style="display:flex;align-items:center;justify-content:center;gap:6px;width:100%;">'
                         + _icone_badge +
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;width:54px;">'
-                        f'{_texto}</span></div></div></div>'
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.18;text-align:left;">'
+                        f'{_texto}</span></div></div>'
                     )
 
                 _outros_seg    = _outros_valores("seguidores", int)
@@ -22137,11 +22137,11 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;white-space:nowrap;">Principais Métricas</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
-                    '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:nowrap;">'
-                    + ('<div style="flex:1;">' + stat_item(path_seg,  "#3a9fd6", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")  + eng_ctx_html    + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_post, "#3a9fd6", "#fce7f3", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_enm,  "#3a9fd6", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post") + engmed_ctx_html + '</div>')
+                    '<div class="metrics-grid">'
+                    + ('<div class="metric-cell">' + stat_item(path_seg,  "#3a9fd6", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
+                    + ('<div class="metric-cell">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")  + eng_ctx_html    + '</div>')
+                    + ('<div class="metric-cell">' + stat_item(path_post, "#3a9fd6", "#fce7f3", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
+                    + ('<div class="metric-cell">' + stat_item(path_enm,  "#3a9fd6", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post") + engmed_ctx_html + '</div>')
                     + '</div></div>'
                 )
 
@@ -22226,7 +22226,8 @@ function setHeightGeral(isOpen) {{
                     _score_titulo = "Leitura do Perfil Concorrente"
                 else:
                     _score_lbl_exibicao = m["score_lbl"]
-                    _score_rodape = f'{_ok_criterios} de {_total_criterios} itens otimizados'
+                    _otimizado_txt = "ponto otimizado" if _ok_criterios == 1 else "pontos otimizados"
+                    _score_rodape = f'{_ok_criterios} {_otimizado_txt} e {score_nok} para melhorar'
                     _score_titulo = "Score de Perfil"
 
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
@@ -23589,6 +23590,35 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     justify-content:center;
 }}
 .g-ext-list {{ min-width:0; }}
+.metrics-grid {{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    align-items:stretch;
+}}
+.metric-cell {{
+    min-width:0;
+    padding:0 9px;
+    display:flex;
+    flex-direction:column;
+}}
+.metric-cell + .metric-cell {{ border-left:1px solid #e5e7eb; }}
+.metric-main {{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:7px;
+    min-width:0;
+}}
+.metric-context {{
+    min-height:42px;
+    margin-top:10px;
+    padding:7px 8px;
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-sizing:border-box;
+}}
 .profile-score-main {{
     display:grid;
     grid-template-columns:150px minmax(0,1fr);
@@ -23665,6 +23695,11 @@ body {{ padding-top:16px; padding-bottom:8px; }}
 @media (max-width:1100px) {{ .cols-wrap {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
 @media (max-width:900px) {{ .ads-canais-grid {{ grid-template-columns:1fr; }} }}
 @media (max-width:560px) {{
+    .metrics-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+    .metric-cell {{ padding:12px 8px; }}
+    .metric-cell + .metric-cell {{ border-left:0; }}
+    .metric-cell:nth-child(even) {{ border-left:1px solid #e5e7eb; }}
+    .metric-cell:nth-child(n+3) {{ border-top:1px solid #e5e7eb; }}
     .g-ext-grid {{ grid-template-columns:1fr; gap:13px; }}
     .g-ext-summary {{
         min-height:0;
@@ -23851,7 +23886,7 @@ function buildSeoColumn(d,colEl) {{
         +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'
         +(isCompetitor
             ? (SEO_ITEMS.length-nok)+' '+((SEO_ITEMS.length-nok)===1?'ponto forte':'pontos fortes')+' e '+nok+' '+(nok===1?'oportunidade':'oportunidades')
-            : (SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados')
+            : (SEO_ITEMS.length-nok)+' '+((SEO_ITEMS.length-nok)===1?'ponto otimizado':'pontos otimizados')+' e '+nok+' para melhorar')
         +'</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);

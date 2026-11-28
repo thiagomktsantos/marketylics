@@ -26183,10 +26183,6 @@ function triggerTab(label) {{
         cards_data = []
         for idx_s, s in enumerate(sites_disponiveis):
             is_minha   = s["tipo"] == "minha"
-            cor_avatar = get_minha_empresa_color() if is_minha else get_concorrente_color(idx_s - 1 if not is_minha else 0)
-            badge_bg   = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_txt  = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd  = "#bbf7d0" if is_minha else "#bfdbfe"
             badge_lbl  = "Minha Empresa" if is_minha else "Concorrente"
             avatar_letras = gerar_avatar(s["nome"])
             tem_analise = bool(st.session_state.get(f"sites_analise_{idx_s}", ""))
@@ -26202,10 +26198,6 @@ function triggerTab(label) {{
                 "nome":           s["nome"],
                 "url":            s["url"],
                 "tipo":           s["tipo"],
-                "cor":            cor_avatar,
-                "badge_bg":       badge_bg,
-                "badge_txt":      badge_txt,
-                "badge_brd":      badge_brd,
                 "badge_lbl":      badge_lbl,
                 "avatar":         avatar_letras,
                 "tem_analise":    tem_analise,
@@ -26224,7 +26216,7 @@ html, body {{
     -webkit-font-smoothing:antialiased; overflow:visible;
 }}
 body {{ padding-bottom:8px; }}
-.outer-wrap {{ background:#d2dde9; border-radius:16px; padding:20px; }}
+.outer-wrap {{ background:#f3f4f6; border-radius:16px; padding:20px; }}
 .cards-grid {{
     display:grid;
     grid-template-columns:repeat(3,minmax(0,1fr));
@@ -26238,7 +26230,7 @@ body {{ padding-bottom:8px; }}
     .cards-grid {{ grid-template-columns:1fr; gap:14px; }}
 }}
 .site-card {{
-    background:#fff; border:1px solid #fff; border-radius:14px;
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     overflow:hidden; display:flex; flex-direction:column;
     transition:box-shadow 0.15s; box-shadow:0 4px 20px rgba(0,0,0,0.10);
 }}
@@ -26249,10 +26241,10 @@ body {{ padding-bottom:8px; }}
 .avatar {{
     width:40px;height:40px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
-    font-size:14px;font-weight:700;color:#fff;flex-shrink:0;
+    font-size:14px;font-weight:700;color:#374151;background:#f3f4f6;flex-shrink:0;
 }}
 .card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
-.badge {{ display:inline-block; padding:2px 10px;border-radius:20px; font-size:11px;font-weight:700; }}
+.badge {{ padding:2px 0;font-size:11px;font-weight:600;color:#4b5563;white-space:nowrap;flex-shrink:0; }}
 .url-row {{
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
@@ -26287,12 +26279,12 @@ body {{ padding-bottom:8px; }}
 .analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
-    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-    border: 1px solid #86efac;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
     border-radius: 10px;
     font-size: 12px;
     font-weight: 600;
-    color: #15803d;
+    color: #4b5563;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -26301,9 +26293,9 @@ body {{ padding-bottom:8px; }}
     transition: all 0.15s;
 }}
 .analise-badge:hover {{
-    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-    border-color: #4ade80;
-    box-shadow: 0 2px 8px rgba(34,197,94,0.15);
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    box-shadow: 0 2px 8px rgba(17,24,39,0.10);
     transform: translateY(-1px);
 }}
 </style>
@@ -26327,22 +26319,15 @@ function buildCards() {{
     CARDS.forEach(function(c) {{
         var card = document.createElement('div');
         card.className = 'site-card';
-        card.style.borderTop = '3px solid ' + c.cor;
 
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
-            '<div class="avatar" style="background:' + c.cor + '">' + c.avatar + '</div>'
+            '<div class="avatar">' + c.avatar + '</div>'
             + '<div style="flex:1;min-width:0;overflow:hidden;">'
             +   '<div class="card-name">' + esc(c.nome) + '</div>'
             + '</div>'
-            + '<span class="badge" style="'
-            +   'background:' + c.badge_bg + ';'
-            +   'color:' + c.badge_txt + ';'
-            +   'border:1px solid ' + c.badge_brd + ';'
-            +   'white-space:nowrap;flex-shrink:0;">'
-            + c.badge_lbl
-            + '</span>';
+            + '<span class="badge">' + c.badge_lbl + '</span>';
         card.appendChild(hdr);
 
         var urlRow = document.createElement('div');
@@ -26394,7 +26379,7 @@ function buildCards() {{
             abadge.title = 'Ver análise na aba Análise de IA';
             abadge.innerHTML =
                 '<div style="display:flex;align-items:center;gap:7px;">'
-                + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
                 + '<span>Última análise: <b>' + c.ultima_analise + '</b></span>'
                 + '</div>'
                 + '<span style="font-size:12px;opacity:0.7;">→ Ver análise</span>';

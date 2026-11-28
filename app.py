@@ -23011,7 +23011,7 @@ function setHeightGeral(isOpen) {{
                         _match_pct = re.search(r"\+\d+%", _ganho_op or "")
                         _badge_pct = _match_pct.group(0) if _match_pct else "+0%"
                         _oport_rows.append(
-                            f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
+                            f'<div style="display:flex;align-items:center;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
                             f'<div class="oport-tip-wrap oport-selo" style="width:{_selo_width_px}px;background:{_cor_op};">'
                             f'<div class="oport-selo-icone">{_lampada_selo_svg}</div>'

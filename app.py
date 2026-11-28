@@ -21678,6 +21678,7 @@ function triggerAdicionar() {
                 "url":       c.get("url", ""),
                 "instagram": c.get("instagram", ""),
                 "fb_page":   c.get("fb_page", ""),
+                "cor":       get_concorrente_color(i),
                 "avatar":    gerar_avatar(c.get("nome", "?")),
             })
         cards_json = _json_conc.dumps(cards_conc, ensure_ascii=True)
@@ -21778,11 +21779,11 @@ body {{ padding-bottom: 8px; }}
     var CARDS = JSON.parse(document.getElementById('cards-data').textContent);
  
     var ICON_GLOBE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
-    var ICON_FB    = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#6b7280"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>';
+    var ICON_FB    = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>';
     var ICON_EDIT  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
     var ICON_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
  
-    var ICON_IG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1" fill="#6b7280" stroke="none"/></svg>';
+    var ICON_IG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c13584" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1" fill="#c13584" stroke="none"/></svg>';
 
     function makeRow(iconHtml, label, value) {{
         return '<div class="row">'
@@ -21831,7 +21832,7 @@ body {{ padding-bottom: 8px; }}
             var hdr = document.createElement('div');
             hdr.className = 'card-header';
             hdr.innerHTML =
-                '<div class="avatar">' + c.avatar + '</div>'
+                '<div class="avatar" style="border:2px solid ' + c.cor + '">' + c.avatar + '</div>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div class="name">' + c.nome + '</div>'
                 + '</div>';
@@ -26180,6 +26181,7 @@ function triggerTab(label) {{
                 "nome":           s["nome"],
                 "url":            s["url"],
                 "tipo":           s["tipo"],
+                "cor":            get_minha_empresa_color() if is_minha else get_concorrente_color(idx_s - 1),
                 "badge_lbl":      badge_lbl,
                 "avatar":         avatar_letras,
                 "tem_analise":    tem_analise,
@@ -26226,7 +26228,12 @@ body {{ padding-bottom:8px; }}
     font-size:14px;font-weight:700;color:#374151;background:#f3f4f6;flex-shrink:0;
 }}
 .card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
-.badge {{ padding:2px 0;font-size:11px;font-weight:600;color:#4b5563;white-space:nowrap;flex-shrink:0; }}
+.badge {{
+    display:inline-block; padding:2px 10px; border:1px solid #93c5fd; border-radius:999px;
+    font-size:11px; font-weight:700; color:#1d4ed8; background:#ffffff;
+    white-space:nowrap; flex-shrink:0;
+}}
+.badge.minha {{ color:#15803d; border-color:#86efac; }}
 .url-row {{
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
@@ -26305,11 +26312,11 @@ function buildCards() {{
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
-            '<div class="avatar">' + c.avatar + '</div>'
+            '<div class="avatar" style="border:2px solid ' + c.cor + '">' + c.avatar + '</div>'
             + '<div style="flex:1;min-width:0;overflow:hidden;">'
             +   '<div class="card-name">' + esc(c.nome) + '</div>'
             + '</div>'
-            + '<span class="badge">' + c.badge_lbl + '</span>';
+            + '<span class="badge' + (c.tipo === 'minha' ? ' minha' : '') + '">' + c.badge_lbl + '</span>';
         card.appendChild(hdr);
 
         var urlRow = document.createElement('div');

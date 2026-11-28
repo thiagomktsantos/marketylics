@@ -399,7 +399,7 @@ _SVG_ICONE_IMAGENS_ALT = (
 )
 
 _SVG_ICONE_TRANSCRICAO = (
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fff">'
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">'
     '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>'
     '</svg>'
 )
@@ -12344,14 +12344,25 @@ else:
     gemini_model = None
 
 
+def normalizar_servicos_empresa(servicos):
+    valores = [servicos] if isinstance(servicos, str) else (servicos or [])
+    return [
+        item
+        for valor in valores
+        if isinstance(valor, str)
+        for parte in re.split(r"[,;]", valor)
+        if (item := parte.strip())
+    ]
+
+
 def editar_servicos_empresa(servicos):
-    servicos = [item.strip() for valor in servicos for item in re.split(r"[,;]", valor) if item.strip()]
+    servicos = normalizar_servicos_empresa(servicos)
     if not hasattr(st.components, "v2"):
         texto = st.text_input(
             "Serviços", value=", ".join(servicos), key="edit_empresa_servicos_texto",
             help="Separe os serviços por vírgula ou ponto e vírgula.",
         )
-        return [item.strip() for item in re.split(r"[,;]", texto) if item.strip()]
+        return normalizar_servicos_empresa(texto)
 
     editor = st.components.v2.component(
         "empresa_servicos",
@@ -12462,7 +12473,7 @@ def editar_servicos_empresa(servicos):
         on_services_change=lambda: None,
     )
     dados = resultado.services or inicial
-    return [*dados["items"], dados["pending"]] if dados["pending"] else dados["items"]
+    return normalizar_servicos_empresa([*dados["items"], dados["pending"]])
 
 
 # Fonte: IBGE, API de Localidades, catálogo de municípios por UF.
@@ -21260,9 +21271,10 @@ function triggerEditar() {
         loc         = emp.get("cidade", "")
         if emp.get("estado"):
             loc += (", " if loc else "") + emp["estado"]
+        servicos = normalizar_servicos_empresa(emp.get("servicos"))
         servicos_html = (
-            "".join([f"<span class='empresa-tag'>{s}</span>" for s in emp.get("servicos", [])])
-            if emp.get("servicos") else "<span style='color:#9ca3af;font-size:14px'>—</span>"
+            "".join(f"<span class='empresa-tag'>{html.escape(servico)}</span>" for servico in servicos)
+            if servicos else "<span style='color:#9ca3af;font-size:14px'>—</span>"
         )
 
         components.html(f"""
@@ -21598,6 +21610,7 @@ function triggerAdicionar() {
                 autocomplete="off",
             )
  
+            st.markdown("<div style='margin:16px 0;border-top:1px solid #f3f4f6'/>", unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             salvar   = col1.form_submit_button("Salvar",   width="stretch", type="primary", key="btn_salvar_concorrente")
             cancelar = col2.form_submit_button("Cancelar", width="stretch", key="btn_cancelar_concorrente")
@@ -26261,14 +26274,16 @@ body {{ padding-bottom:8px; }}
 }}
 .btn-wrap-preview {{ padding:0 14px 12px; }}
 .btn-analisar {{
-    width:100%;padding:11px 0;
-    border:1px solid #3a9fd6;border-radius:8px;
-    background:#eff6ff;font-size:14px;font-weight:700;color:#1d4ed8;
+    box-sizing:border-box;width:100%;min-height:40px;padding:8px 16px;
+    border:none;border-radius:8px;box-shadow:none;
+    background:#0780c0;color:#ffffff;font-size:14px;font-weight:600;
     cursor:pointer;font-family:'DM Sans',sans-serif;
-    transition:background 0.15s;
+    transition:background 0.12s ease;
     display:flex;align-items:center;justify-content:center;gap:7px;
 }}
-.btn-analisar:hover {{ background:#dbeafe; }}
+.btn-analisar:hover:not(:disabled) {{ background:#065f9e; }}
+.btn-analisar:focus-visible {{ outline:2px solid #065f9e;outline-offset:2px; }}
+.btn-analisar:disabled {{ opacity:0.65;cursor:wait; }}
 .analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
@@ -31349,9 +31364,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 n_inativos  = sum(1 for a in ads_f if not a.get("ativo", True))
 
                 stats_cards = []
-                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
                 if n_inativos > 0:
-                    stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#6b7280">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
+                    stats_cards.append(f'<div class="stat-card"><div class="stat-num">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Imagens</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_video}</div><div class="stat-lbl">Vídeos</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_carrossel}</div><div class="stat-lbl">Carrossel</div></div>')
@@ -31537,11 +31552,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
-                font-size:9px;font-weight:700;line-height:1;padding:4px 8px;
-                border:1px solid #d1d5db;border-radius:8px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px;
-                white-space:nowrap;box-shadow:none">
+         style="position:absolute;top:8px;right:8px;background:#ffffff;color:#000000;
+                font-size:10px;font-weight:600;text-transform:uppercase;padding:3px 7px;
+                border-radius:6px;z-index:3;cursor:help;display:inline-flex;
+                align-items:center;gap:4px;white-space:nowrap">
         {_SVG_ICONE_CC_YOUTUBE if "" else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if "" else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
@@ -32068,7 +32082,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
 .stat-lbl-green{{color:#15803d;}}
-.stat-num{{font-size:22px;font-weight:800;}}
+.stat-num{{font-size:22px;font-weight:800;color:#111827;}}
 .stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
 .ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
@@ -38781,9 +38795,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 n_inativos  = sum(1 for a in gads_f if not a.get("ativo", True))
 
                 stats_cards = []
-                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
                 if n_inativos > 0:
-                    stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#6b7280">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
+                    stats_cards.append(f'<div class="stat-card"><div class="stat-num">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Gráficos</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_video}</div><div class="stat-lbl">Vídeos</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_texto}</div><div class="stat-lbl">Texto</div></div>')
@@ -39154,11 +39168,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
-                font-size:9px;font-weight:700;line-height:1;padding:4px 8px;
-                border:1px solid #d1d5db;border-radius:8px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px;
-                white-space:nowrap;box-shadow:none">
+         style="position:absolute;top:8px;right:8px;background:#ffffff;color:#000000;
+                font-size:10px;font-weight:600;text-transform:uppercase;padding:3px 7px;
+                border-radius:6px;z-index:3;cursor:help;display:inline-flex;
+                align-items:center;gap:4px;white-space:nowrap">
         {_SVG_ICONE_CC_YOUTUBE if _cc_youtube_txt_v156 else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if _cc_youtube_txt_v156 else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
@@ -39883,7 +39896,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
 .stat-lbl-green{{color:#15803d;}}
-.stat-num{{font-size:22px;font-weight:800;}}
+.stat-num{{font-size:22px;font-weight:800;color:#111827;}}
 .stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
 .ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
@@ -44808,7 +44821,11 @@ body{{padding-bottom:8px;}}
     display:flex; align-items:center; gap:4px;
     max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }}
-.transcricao-badge.pronta {{ background:rgba(0,0,0,0.65); color:#fff; }}
+.transcricao-badge.pronta {{
+    background:#ffffff; color:#000000; border-radius:6px;
+    padding:3px 7px; font-size:11px; font-weight:600;
+    text-transform:uppercase; display:inline-flex;
+}}
 .transcricao-badge.pendente {{ background:rgba(0,0,0,0.55); color:#fbbf24; }}
 .metrics-row {{
     display:grid; grid-template-columns:1.6fr 1.2fr 1.2fr 1.2fr;

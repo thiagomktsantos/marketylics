@@ -22983,7 +22983,9 @@ function setHeightGeral(isOpen) {{
                 if _oportunidades_top:
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
                     _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
-                    _selo_width_px = 40 + (_maior_badge_chars * 6)
+                    # O maior rótulo é "Anúncios". A base menor equilibra o
+                    # espaço visual entre o ícone, o texto e a borda direita.
+                    _selo_width_px = 34 + (_maior_badge_chars * 6)
                     _lampada_selo_svg = (
                         '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
                         'stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
@@ -23286,7 +23288,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .oport-tip-wrap:hover .tip {{ display:none; }}
 .oport-selo {{
     height:38px; padding:3px; border-radius:9px; color:#fff; flex-shrink:0; margin-top:1px;
-    display:flex; align-items:center; gap:4px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
+    display:flex; align-items:center; gap:2px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
 }}
 .oport-selo:hover {{
     transform:translateY(-1px); filter:brightness(.96); box-shadow:0 4px 10px rgba(26,46,74,.18);
